@@ -1,6 +1,5 @@
 require('dotenv').config();
 const Jobs = require("./models/job");
-const jobQueue = require("./queue/jobQueue")
 const { Worker } = require("bullmq");
 const connectDB = require("./config/db");
 
@@ -21,27 +20,13 @@ const worker = new Worker(
     console.log("Job data :",job.data);
     const mongoJob = await Jobs.findById(job.data.mongoJobId);
     if(!mongoJob){
-      throw new Error("Mongo Job not Found!")
+      throw new Error("Mongo Job not found!");
     }
-    await Jobs.findByIdAndUpdate(
-      mongoJob._id,
-      {
-        status : "processing"
-      }
-    );
     await delay(3000);
     if(job.name === "fail_test"){
-      throw new Error("Simulated Job Failure..")
+      throw new Error("Simulated Job Failure");
     }
-    await Jobs.findByIdAndUpdate(
-      mongoJob._id,
-      {
-        status : "completed",
-        completedAt : new Date(),
-        error : null
-      }
-    );
-    console.log("Job completed : ",job.id);
+    console.log("Work Successfully Processed..");
   }catch(error){
       console.error("Job failed :",error.message);
       throw error;
@@ -54,5 +39,78 @@ const worker = new Worker(
     }
   }
 );
+
+worker.on("active", async (job) => {
+  console.log(new Date().toLocaleTimeString(),
+  `Job ${job.id} Active | attempt ${job.attemptsMade + 1}`)
+  try{
+    const currentAttempt = job.attemptsMade + 1;
+    await Jobs.findByIdAndUpdate(
+      job.data.mongoJobId,
+      {
+        status : "processing",
+        attempts : currentAttempt,
+      }
+    );
+   console.log(`Job ${job.id} has started | attemptsMade : ${job.attemptsMade}`);
+
+}catch(error){
+  console.error("Failed to update attempt:",error.message);
+}
+});
+worker.on("completed", async(job) => {
+  try{
+    await Jobs.findByIdAndUpdate(
+      job.data.mongoJobId,
+      {
+        status : "completed",
+        completedAt : new Date(),
+      }
+    );
+  console.log(`Job ${job.id} completed successfully`);
+  }catch(error){
+     console.error("Error in Updating Status", error.message);
+  }
+});
+worker.on("failed", async (job,error) => {
+  console.log(
+    new Date().toLocaleTimeString(),
+    `Job ${job.id} FAILED | attemptsMade ${job.attemptsMade}`
+  );
+  if(!job){
+    console.error("Unknown job failure:",error.message);
+    return;
+  }
+  try{
+    const maxAttempts = job.opts.attempts || 1;
+    if(job.attemptsMade >= maxAttempts){
+      await Jobs.findByIdAndUpdate(
+        job.data.mongoJobId,
+        {
+          status : "failed",
+          attempts : job.attemptsMade,
+          error : error.message,
+        }
+      );
+      console.log(`Job ${job.id} Permanent  Failed ,Job attempts : ${job.attemptsMade}`);
+    }
+    else {
+      await Jobs.findByIdAndUpdate(
+        job.data.mongoJobId,
+        {
+          status : "retrying",
+          attempts : job.attemptsMade,
+          error : error.message,
+        }
+      );
+      console.log(`Job ${job.id} failed | attemptsMade : ${job.attemptsMade} | BullMq retrying`);
+    }
+  }catch(error){
+    console.error("Error in Updating MongoDB",error.message);
+  }
+});
+worker.on("error", (error) => {
+  console.log("Worker Error:",error.message);
+})
 }
 startWorker();

@@ -2,13 +2,23 @@ require('dotenv').config();
 const express = require("express");
 const connectDB = require("./config/db");
 const Jobs = require("./models/job");
-const { redisClient , connectRedis} = require("./config/redis");
 const jobQueue = require("./queue/jobQueue");
 const app = express();
 const PORT = process.env.PORT || 3001;
 app.use(express.json());
-connectDB();
-connectRedis();
+const startServer = async () => {
+  try{
+    await connectDB();
+    app.listen(PORT, () => {
+      console.log(`Server is running on PORT : ${PORT}`);
+    })
+  }catch(error){
+    console.log("Failed to Start Server:",error.message);
+    process.exit(1);
+  }
+}
+startServer();
+
 app.get("/",(req,res) => {
   res.json({
     message : "Api is running..."
@@ -88,6 +98,3 @@ app.get("/jobs/:id", async(req,res) => {
   })
 }
 })
-app.listen(PORT, () => {
-  console.log("Server is running on PORT",PORT)
-});
