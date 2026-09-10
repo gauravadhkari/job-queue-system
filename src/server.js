@@ -26,11 +26,14 @@ app.get("/",(req,res) => {
 });
 app.post("/jobs", async (req,res) => {
   try{
-  const { type , payload} = req.body;
+  const { type , payload , priority} = req.body;
+  console.log("Priority received:", priority);
+  console.log("Priority type:", typeof priority);
   const job = await Jobs.create({
     type,
     status : "pending",
     payload,
+    priority,
     attempts : 0,
     error : null,
   });
@@ -43,9 +46,11 @@ app.post("/jobs", async (req,res) => {
       backoff : {
         type : "exponential",
         delay : 2000,
-      }
+      },
+      priority,
     }
   )
+  console.log("BullMQ priority:", queueJob.opts.priority);
   console.log("Queue JOb : ",queueJob.id);
   res.status(201).json({
     success : true,

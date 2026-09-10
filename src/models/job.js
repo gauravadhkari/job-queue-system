@@ -20,6 +20,10 @@ const jobSchema = new mongoose.Schema({
     type : Date,
     default : null,
   },
+  priority : {
+    type : Number,
+    default : 5,
+  }
 },
 {
   timestamps : true
