@@ -26,14 +26,29 @@ app.get("/",(req,res) => {
 });
 app.post("/jobs", async (req,res) => {
   try{
-  const { type , payload , priority} = req.body;
+  const { type , payload , priority,runAt} = req.body;
   console.log("Priority received:", priority);
   console.log("Priority type:", typeof priority);
+  const targetTime = new Date(runAt).getTime();
+  if(Number.isNaN(targetTime)) {
+    return res.status(400).json({
+      success : false,
+      message : "Invalid runAt Date"
+    });
+  }
+  const delayMs = targetTime - Date.now();
+  if(delayMs < 0){
+    return res.status(400).json({
+      success : false,
+      message : "Run At must be in the failure"
+    })
+  }
   const job = await Jobs.create({
     type,
     status : "pending",
     payload,
     priority,
+    runAt : new Date(runAt),
     attempts : 0,
     error : null,
   });
@@ -48,10 +63,18 @@ app.post("/jobs", async (req,res) => {
         delay : 2000,
       },
       priority,
+      delay : delayMs,
     }
   )
   console.log("BullMQ priority:", queueJob.opts.priority);
   console.log("Queue JOb : ",queueJob.id);
+  console.log(
+  new Date().toLocaleTimeString(),
+  "Queued job:",
+  queueJob.id,
+  "delay:",
+  queueJob.opts.delay
+);
   res.status(201).json({
     success : true,
     message : "Job Created..",

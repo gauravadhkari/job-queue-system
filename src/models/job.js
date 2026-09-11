@@ -23,6 +23,10 @@ const jobSchema = new mongoose.Schema({
   priority : {
     type : Number,
     default : 5,
+  },
+  runAt : {
+    type : Date,
+    default : null,
   }
 },
 {

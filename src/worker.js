@@ -15,6 +15,16 @@ const worker = new Worker(
   "jobs",
   async(job) => {
     try{
+      if (job.name === "scheduled_test") {
+    console.log(
+      new Date().toLocaleTimeString(),
+      "Recurring job executed:",
+      job.data.message
+    );
+
+    return;
+  }
+  
     console.log("Bull Mq job received",job.id);
     console.log("Job Name : ",job.name);
     console.log("Job data :",job.data);
@@ -42,6 +52,12 @@ const worker = new Worker(
 );
 
 worker.on("active", async (job) => {
+  if (!job.data.mongoJobId) {
+    console.log(
+      `${new Date().toLocaleTimeString()} Scheduled job ${job.id} active`
+    );
+    return;
+  }
   console.log(new Date().toLocaleTimeString(),
   `Job ${job.id} Active | attempt ${job.attemptsMade + 1}`)
   try{
@@ -60,6 +76,12 @@ worker.on("active", async (job) => {
 }
 });
 worker.on("completed", async(job) => {
+  if (!job.data.mongoJobId) {
+    console.log(
+      `${new Date().toLocaleTimeString()} Scheduled job ${job.id} completed Successfully`
+    );
+    return;
+  }
   try{
     await Jobs.findByIdAndUpdate(
       job.data.mongoJobId,
@@ -74,12 +96,19 @@ worker.on("completed", async(job) => {
   }
 });
 worker.on("failed", async (job,error) => {
+   if(!job){
+    console.error("Unknown job failure:",error.message);
+    return;
+  }
   console.log(
     new Date().toLocaleTimeString(),
     `Job ${job.id} FAILED | attemptsMade ${job.attemptsMade}`
   );
-  if(!job){
-    console.error("Unknown job failure:",error.message);
+  if (!job.data.mongoJobId) {
+    console.error(
+      `Scheduled job ${job.id} failed:`,
+      error.message
+    );
     return;
   }
   try{
