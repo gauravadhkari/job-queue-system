@@ -27,6 +27,20 @@ const jobSchema = new mongoose.Schema({
   runAt : {
     type : Date,
     default : null,
+  },
+  idempotencyKey : {
+    type : String,
+    unique : true,
+    sparse : true,
+  },
+  queueStatus : {
+    type : String,
+    enum : ["not_queued","queued","queue_failed"],
+    default : "not_queued",
+  },
+  queueJobId : {
+    type : String,
+    default : null,
   }
 },
 {

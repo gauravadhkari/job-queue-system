@@ -26,7 +26,7 @@ app.get("/",(req,res) => {
 });
 app.post("/jobs", async (req,res) => {
   try{
-  const { type , payload , priority,runAt} = req.body;
+  const { type , payload , priority,runAt,idempotencyKey} = req.body;
   console.log("Priority received:", priority);
   console.log("Priority type:", typeof priority);
   const targetTime = new Date(runAt).getTime();
@@ -37,10 +37,19 @@ app.post("/jobs", async (req,res) => {
     });
   }
   const delayMs = targetTime - Date.now();
-  if(delayMs < 0){
+  if(delayMs <= 0){
     return res.status(400).json({
       success : false,
-      message : "Run At must be in the failure"
+      message : "runAt must be in the failure"
+    })
+  }
+  const existingJob = await Jobs.findOne({
+    idempotencyKey
+  });
+  if(existingJob){
+    return res.status(200).json({
+      message : "Job already Exist..",
+      existingJob,
     })
   }
   const job = await Jobs.create({
@@ -49,10 +58,14 @@ app.post("/jobs", async (req,res) => {
     payload,
     priority,
     runAt : new Date(runAt),
+    idempotencyKey,
+    queueStatus :"not_queued",
     attempts : 0,
     error : null,
   });
-  const queueJob = await jobQueue.add(
+  let queueJob;
+  try{
+   queueJob = await jobQueue.add(
     type,
     {
       mongoJobId : job._id.toString(),
@@ -65,8 +78,26 @@ app.post("/jobs", async (req,res) => {
       priority,
       delay : delayMs,
     }
-  )
-  console.log("BullMQ priority:", queueJob.opts.priority);
+  );
+}catch(queueError){
+    await Jobs.findByIdAndUpdate(job._id,{
+      queueStatus : "queue_failed",
+      error : queueError.message,
+    });
+    return res.status(503).json({
+      success : false,
+      message : "Job was created but not Queued..",
+      jobId : job._id,
+    })
+  }
+  const updatedJob = await Jobs.findByIdAndUpdate(job._id,{
+    queueStatus : "queued",
+    queueJobId : queueJob.id,
+  },
+   {
+    returnDocument : "after",
+   });
+   console.log("BullMQ priority:", queueJob.opts.priority);
   console.log("Queue JOb : ",queueJob.id);
   console.log(
   new Date().toLocaleTimeString(),
@@ -75,12 +106,22 @@ app.post("/jobs", async (req,res) => {
   "delay:",
   queueJob.opts.delay
 );
-  res.status(201).json({
-    success : true,
-    message : "Job Created..",
-    job
-  })
+   return res.status(201).json({
+  success: true,
+  message: "Job Created",
+  job: updatedJob
+});
 }catch(error){
+  if(error.code === 11000 && error.keyPattern?.idempotencyKey){
+    const existingJob = await Jobs.findOne({
+      idempotencyKey
+    });
+    return res.status(200).json({
+      success : true,
+      message : "Duplicate request.Existing Job returned.",
+      job : existingJob,
+    });
+  }
   console.error("Internal Server Error",error.message);
   res.status(500).json({
     success : false,
