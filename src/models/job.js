@@ -35,7 +35,7 @@ const jobSchema = new mongoose.Schema({
   },
   queueStatus : {
     type : String,
-    enum : ["not_queued","queued","queue_failed"],
+    enum : ["not_queued","queueing","queued","queue_failed"],
     default : "not_queued",
   },
   queueJobId : {

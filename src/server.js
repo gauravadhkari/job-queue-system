@@ -129,6 +129,154 @@ app.post("/jobs", async (req,res) => {
   })
 }
 });
+app.post("/jobs/:id/requeue", async (req,res) => {
+  try {
+     const jobId = req.params.id;
+     const job = await Jobs.findOneAndUpdate({
+      _id : jobId,
+      queueStatus : "queue_failed"
+     },{
+      queueStatus : "queueing"
+     },
+    {
+      returnDocument : "after",
+    });
+     if(!job){
+      return res.status(409).json({
+        success : false,
+        message : "Job can not be requued in its current state"
+      });
+     }
+     let delayMs = 0;
+     if(job.runAt){
+      delayMs = Math.max(new Date(job.runAt).getTime() - Date.now(),0);
+     }
+     let queueJob;
+     try{
+       queueJob = await jobQueue.add(
+        job.type,
+        {
+          mongoJobId : job._id.toString(),
+        },
+        {
+          attempts : 3,
+          backoff : {
+            type : "exponential",
+            delay : 2000
+          },
+          priority : job.priority,
+          delay : delayMs
+        }
+       );
+     }catch(queueError){
+       await Jobs.findByIdAndUpdate(job._id,{
+        queueStatus : "queue_failed",
+        error : queueError.message,
+       })
+       return res.status(503).json({
+        success : false,
+        message : "Requeue Failed. Redis/queue may still unavailable"
+       });
+     }
+     const updatedJob = await Jobs.findByIdAndUpdate(job.id,
+    {
+      queueStatus : "queued",
+      queueJobId : queueJob._id,
+      error : null,
+      status : "pending",
+
+    },
+    {
+      returnDocument : "after",
+    }
+  );
+  return res.status(200).json({
+    success : true,
+    message : "Job requeued Successfully",
+    job : updatedJob,
+  })
+  }catch(error){
+    console.error("Queue Error:",error.message);
+    res.status(500).json({
+      success : false,
+      message : "Internal Server Error"
+    })
+  }
+});
+app.post("/jobs/recover-failed", async(req,res) => {
+  try{
+    const failedJobs = await Jobs.find({
+      queueStatus : "queue_failed"
+    }).limit(20);
+
+    console.log("Failed jobs found :",failedJobs.length);
+    let recovered = 0;
+    let skipped = 0;
+    let failed = 0;
+    for(const failedJob of failedJobs){
+      const job = await Jobs.findOneAndUpdate({
+        _id : failedJob._id,
+        queueStatus : "queue_failed"
+      },
+    {
+      queueStatus : "queueing"
+    },{
+      returnDocument : "after"
+    });
+    if(!job){
+      skipped++;
+      continue;
+    }
+    let delayMs = 0;
+     if(job.runAt){
+      delayMs = Math.max(new Date(job.runAt).getTime() - Date.now(),0);
+     }
+     try{
+      const queueJob = await jobQueue.add(job.type,
+        {
+          mongoJobId : job.id,
+        },
+        {
+          attempts : 3,
+          backoff : {
+            type : "exponential",
+            delay : 2000
+          },
+          priority : job.priority,
+          delay : delayMs,
+        }
+      );
+      await Jobs.findByIdAndUpdate(job.id,{
+        queueStatus : "queued",
+        queueJobId : queueJob.id,
+        error : null,
+        status : "pending"
+      })
+      recovered++;
+     }catch(queueError){
+      await Jobs.findByIdAndUpdate(job.id,{
+        queueStatus : "queue_failed",
+        error : queueError.message,
+      })
+      failed++;
+     }
+    }
+    res.status(200).json({
+      success : true,
+      message : "Failed Jobs Recovered Successfully",
+      count : failedJobs.length,
+      recovered : recovered,
+      skipped : skipped,
+      failed : failed,
+    })
+  }catch(error){
+    console.error("Recovery Error",error.message);
+    res.status(500).json({
+      success : false,
+      message : "Internal Server Error"
+    })
+  }
+})
 app.get("/jobs", async(req,res) => {
   try{
   const data = await Jobs.find();
