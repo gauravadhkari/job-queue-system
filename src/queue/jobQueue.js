@@ -7,7 +7,9 @@ const connection = new IORedis({
    maxRetriesPerRequest : 1,
    enableOfflineQueue : false,
    connectTimeout: 3000,
-   retryStrategy : () => null,
+   retryStrategy(times){
+     return Math.min(times * 1000,5000);
+   },
 });
 connection.on("error", (error) => {
   console.error("BullMQ Queue Error:",error.message);

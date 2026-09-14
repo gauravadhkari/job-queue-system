@@ -3,12 +3,15 @@ const express = require("express");
 const connectDB = require("./config/db");
 const Jobs = require("./models/job");
 const jobQueue = require("./queue/jobQueue");
+const recoveryJob = require('./services/recoveryService');
+const startRecoveryRunner = require('./services/recoveryRunner');
 const app = express();
 const PORT = process.env.PORT || 3001;
 app.use(express.json());
 const startServer = async () => {
   try{
     await connectDB();
+    startRecoveryRunner();
     app.listen(PORT, () => {
       console.log(`Server is running on PORT : ${PORT}`);
     })
@@ -204,76 +207,16 @@ app.post("/jobs/:id/requeue", async (req,res) => {
   }
 });
 app.post("/jobs/recover-failed", async(req,res) => {
-  try{
-    const failedJobs = await Jobs.find({
-      queueStatus : "queue_failed"
-    }).limit(20);
-
-    console.log("Failed jobs found :",failedJobs.length);
-    let recovered = 0;
-    let skipped = 0;
-    let failed = 0;
-    for(const failedJob of failedJobs){
-      const job = await Jobs.findOneAndUpdate({
-        _id : failedJob._id,
-        queueStatus : "queue_failed"
-      },
-    {
-      queueStatus : "queueing"
-    },{
-      returnDocument : "after"
-    });
-    if(!job){
-      skipped++;
-      continue;
-    }
-    let delayMs = 0;
-     if(job.runAt){
-      delayMs = Math.max(new Date(job.runAt).getTime() - Date.now(),0);
-     }
-     try{
-      const queueJob = await jobQueue.add(job.type,
-        {
-          mongoJobId : job.id,
-        },
-        {
-          attempts : 3,
-          backoff : {
-            type : "exponential",
-            delay : 2000
-          },
-          priority : job.priority,
-          delay : delayMs,
-        }
-      );
-      await Jobs.findByIdAndUpdate(job.id,{
-        queueStatus : "queued",
-        queueJobId : queueJob.id,
-        error : null,
-        status : "pending"
-      })
-      recovered++;
-     }catch(queueError){
-      await Jobs.findByIdAndUpdate(job.id,{
-        queueStatus : "queue_failed",
-        error : queueError.message,
-      })
-      failed++;
-     }
-    }
+  try {
+    const result = await recoveryJob();
     res.status(200).json({
       success : true,
-      message : "Failed Jobs Recovered Successfully",
-      count : failedJobs.length,
-      recovered : recovered,
-      skipped : skipped,
-      failed : failed,
+      ...result,
     })
   }catch(error){
-    console.error("Recovery Error",error.message);
     res.status(500).json({
       success : false,
-      message : "Internal Server Error"
+      message : "Recovery Failed!"
     })
   }
 })
