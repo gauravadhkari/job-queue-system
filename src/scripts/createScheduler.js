@@ -5,7 +5,7 @@ const createScheduler = async () => {
      await jobQueue.upsertJobScheduler(
       "test-scheduler",
       {
-        pattern : "*/10 * * * * *",//second minute hour day-of-month month day-of-week
+        pattern : "0 0 0 0 0 1",//second minute hour day-of-month month day-of-week
       },
       {
         name : "scheduled_test",

@@ -73,6 +73,7 @@ app.post("/jobs", async (req,res) => {
     {
       mongoJobId : job._id.toString(),
     },{
+      jobId : job._id.toString(),
       attempts : 3,
       backoff : {
         type : "exponential",
@@ -162,6 +163,7 @@ app.post("/jobs/:id/requeue", async (req,res) => {
           mongoJobId : job._id.toString(),
         },
         {
+          jobId : job._id.toString(),
           attempts : 3,
           backoff : {
             type : "exponential",

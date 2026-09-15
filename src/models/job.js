@@ -41,6 +41,10 @@ const jobSchema = new mongoose.Schema({
   queueJobId : {
     type : String,
     default : null,
+  },
+  queueingAt : {
+    type : Date,
+    default : null,
   }
 },
 {

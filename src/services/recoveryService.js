@@ -2,6 +2,46 @@ const Jobs = require("../models/job");
 const jobQueue = require("../queue/jobQueue");
 
 const recoveryJob = async () => {
+    const STALE_QUEUEING_TIME = 10 * 1000;
+    const staleBefore = new Date(Date.now() - STALE_QUEUEING_TIME);
+    const staleJobs = await Jobs.find({
+      queueStatus : "queueing",
+      queueingAt : {
+        $lte : staleBefore
+      }
+    })
+    for(const staleJob of staleJobs){
+      if(staleJob.status === "processing" ||
+        staleJob.status === "failed"  ||
+        staleJob.status === "completed"
+      ){
+        await Jobs.findByIdAndUpdate(staleJob._id,{
+          queueStatus : "queued",
+          queueingAt : null
+        });
+        continue;
+      }
+      const bullJob = await jobQueue.getJob(
+        staleJob._id.toString()
+      )
+      if(bullJob){
+        const bullState = await bullJob.getState();
+        console.log("Recovered Stale Job :",staleJob._id.toString(),
+        "BullMQ state :",bullState);
+        await Jobs.findByIdAndUpdate(staleJob._id,{
+          queueStatus : "queued",
+          queueJobId : bullJob.id,
+          queueingAt : null,
+          error : null,
+        })
+        continue;
+      }
+      await Jobs.findByIdAndUpdate(staleJob._id,{
+        queueStatus : "queue_failed",
+        queueingAt : null,
+        error : "Stale queueing Job was not Found in BUllMQ!"
+      })
+    }
     const failedJobs = await Jobs.find({
       queueStatus : "queue_failed"
     }).limit(20);
@@ -16,7 +56,8 @@ const recoveryJob = async () => {
         queueStatus : "queue_failed"
       },
     {
-      queueStatus : "queueing"
+      queueStatus : "queueing",
+      queueingAt : new Date(),
     },{
       returnDocument : "after"
     });
@@ -34,6 +75,7 @@ const recoveryJob = async () => {
           mongoJobId : job._id.toString(),
         },
         {
+          jobId : job._id.toString(),
           attempts : 3,
           backoff : {
             type : "exponential",
@@ -46,6 +88,7 @@ const recoveryJob = async () => {
       await Jobs.findByIdAndUpdate(job.id,{
         queueStatus : "queued",
         queueJobId : queueJob.id,
+        queueingAt : null,
         error : null,
         status : "pending"
       })
@@ -53,6 +96,7 @@ const recoveryJob = async () => {
      }catch(queueError){
       await Jobs.findByIdAndUpdate(job.id,{
         queueStatus : "queue_failed",
+        queueingAt : null,
         error : "Redis queue unavailable",
       })
       failed++;
