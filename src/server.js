@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require("express");
+const mongoose = require("mongoose")
 const connectDB = require("./config/db");
 const Jobs = require("./models/job");
 const jobQueue = require("./queue/jobQueue");
@@ -22,10 +23,25 @@ const startServer = async () => {
 }
 startServer();
 
-app.get("/",(req,res) => {
-  res.json({
-    message : "Api is running..."
-  })
+app.get("/health", async(req,res) => {
+  
+     const mongoHealthy = mongoose.connection.readyState === 1;
+     let redisHealthy = true;
+     try{
+       await jobQueue.getJobCounts("waiting")
+      }catch(error){
+        redisHealthy = false;
+       }
+      const healthy = mongoHealthy && redisHealthy;
+      return res.status(healthy ? 200 : 503).json({
+        success : healthy,
+        status : healthy ? "Healthy" : "Unhealthy",
+        services : {
+          api : "healthy",
+          mongoDb : mongoHealthy ? "Healthy" : "Unavailable",
+          redis : redisHealthy ? "Healthy" : "Unavailable"
+        }
+      });
 });
 app.post("/jobs", async (req,res) => {
   try{
@@ -259,4 +275,87 @@ app.get("/jobs/:id", async(req,res) => {
     message : "Server Error.."
   })
 }
+})
+app.get("/admin/job-stats", async (req,res) => {
+  try{
+  
+    const [total,pending,processing,completed,failed] = await Promise.all(
+      [
+        Jobs.countDocuments(),
+        Jobs.countDocuments({status : "pending"}),
+        Jobs.countDocuments({status : "processing"}),
+        Jobs.countDocuments({status : "completed"}),
+        Jobs.countDocuments({status : "failed"})
+      ]
+    );
+    const [queued,queueing,not_queued,queue_failed] = await Promise.all(
+      [
+        Jobs.countDocuments({queueStatus : "queued"}),
+        Jobs.countDocuments({queueStatus : "queueing"}),
+        Jobs.countDocuments({queueStatus : "not_queued"}),
+        Jobs.countDocuments({queueStatus : "queue_failed"})
+      ]
+    );
+    let bullJobCount = null;
+    let queueHealth = "Healthy";
+    try{
+      bullJobCount = await jobQueue.getJobCounts(
+      "waiting",
+      "active",
+      "completed",
+      "failed",
+      "delayed"
+     )
+    }catch(queueError){
+      queueHealth = "Unavailable";
+      console.log("BullMQ health check failed :",queueError.message);
+    }
+    return res.status(200).json({
+      success : true,
+      health : {
+        queue : queueHealth,
+      },
+      jobs : {
+        total,
+        pending,
+        processing,
+        completed,
+        failed
+      },
+      queue :{
+        queued,
+        not_queued,
+        queueing,
+        queue_failed
+      },
+      bullJobs : bullJobCount,
+    })
+  }catch(error){
+    console.error("Getting Job Stats Error",error.message);
+    res.status(500).json({
+      success : false,
+      message : "Internal Server Error"
+    })
+  }
+})
+app.get("/admin/failed-jobs",async (req,res) => {
+  try {
+    const failedJobs = await Jobs.find(
+      {status : "failed"}
+    ).sort({updatedAt : -1})
+    .limit(20)
+    .select("type status attempts error payload priority createdAt updatedAt")
+
+    return res.status(200).json({
+      success : true,
+      count : failedJobs.length,
+      Jobs : failedJobs,
+    })
+  }catch(error){
+     console.error("Get failed Job Error:",error.message);
+     res.status(500).json({
+      success : false,
+      message : "Internal Server Error"
+     });
+  }
 })
