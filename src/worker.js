@@ -2,6 +2,7 @@ require('dotenv').config();
 const Jobs = require("./models/job");
 const { Worker } = require("bullmq");
 const connectDB = require("./config/db");
+const mongoose = require("mongoose");
 
 
 const delay = (ms) => {
@@ -9,9 +10,10 @@ const delay = (ms) => {
         setTimeout(resolve,ms);
       });
     };
+let worker;
 const startWorker = async () => {
 await connectDB();
-const worker = new Worker(
+worker = new Worker(
   "jobs",
   async(job) => {
     try{
@@ -144,3 +146,29 @@ worker.on("error", (error) => {
 })
 }
 startWorker();
+
+
+const gracefulShutdown = async(signal) => {
+  console.log(`${signal} received . Worker Shutdown Gracefully`);
+  try{
+    if(worker){
+      await worker.close();
+    }
+
+    await mongoose.connection.close();
+    console.log("Worker Shutdown Successfully");
+    process.exit(0);
+  }catch(error){
+    console.error("Worker ShutDown Error:",error.message);
+
+    process.exit(1);
+  }
+}
+
+process.on("SIGINT",()=> {
+  gracefulShutdown("SIGINT");
+})
+
+process.on("SIGTERM",()=> {
+  gracefulShutdown("SIGTERM");
+})

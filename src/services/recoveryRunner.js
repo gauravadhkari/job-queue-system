@@ -1,7 +1,9 @@
+const config = require('../config/env');
 const recoveryJob = require("./recoveryService");
 let isRecovering = false;
+const RECOVERY_INTERVAL = config.recovery.interval || 30000;
 const startRecoveryRunner = async () => {
-  setInterval( async () => {
+  const interval = setInterval( async () => {
     if(isRecovering){
       console.log("Recovery Already Running, skipping");
       return;
@@ -18,7 +20,8 @@ const startRecoveryRunner = async () => {
   }finally{
     isRecovering = false;
   }
-  },10000)
+  },RECOVERY_INTERVAL);
+  return interval;
 }
 
 module.exports = startRecoveryRunner;

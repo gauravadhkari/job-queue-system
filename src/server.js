@@ -1,4 +1,3 @@
-require('dotenv').config();
 const express = require("express");
 const mongoose = require("mongoose")
 const connectDB = require("./config/db");
@@ -6,14 +5,17 @@ const Jobs = require("./models/job");
 const jobQueue = require("./queue/jobQueue");
 const recoveryJob = require('./services/recoveryService');
 const startRecoveryRunner = require('./services/recoveryRunner');
+const config = require("./config/env");
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = config.PORT || 3001;
 app.use(express.json());
+let server;
+let recoveryInterval;
 const startServer = async () => {
   try{
     await connectDB();
-    startRecoveryRunner();
-    app.listen(PORT, () => {
+    recoveryInterval = startRecoveryRunner();
+    server = app.listen(PORT, () => {
       console.log(`Server is running on PORT : ${PORT}`);
     })
   }catch(error){
@@ -358,4 +360,35 @@ app.get("/admin/failed-jobs",async (req,res) => {
       message : "Internal Server Error"
      });
   }
+})
+
+//// GRACEFULL SHUTDOWN
+
+const gracefulShutdown = async (signal) => {
+   console.log(`{$signal} received . Shutting down gracefully`);
+   try {
+    if(recoveryInterval){
+      clearInterval(recoveryInterval);
+    }
+
+    if(server){
+      server.close();
+    }
+    await jobQueue.close();
+    await mongoose.connection.close();
+
+    console.log("Shutdown Completed");
+    process.exit(0);
+   }catch(error){
+    console.error("Shutdown Error:",error.message);
+
+    process.exit(1);
+   }
+}
+
+process.on("SIGINT", () => {
+  gracefulShutdown("SIGINT");
+})
+process.on("SIGTERM",() => {
+  gracefulShutdown("SIGTERM");
 })

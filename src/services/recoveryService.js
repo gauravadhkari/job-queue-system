@@ -1,8 +1,9 @@
+const config = require('../config/env');
 const Jobs = require("../models/job");
 const jobQueue = require("../queue/jobQueue");
 
 const recoveryJob = async () => {
-    const STALE_QUEUEING_TIME = 10 * 1000;
+    const STALE_QUEUEING_TIME = config.recovery.staleQueueing || 60000;
     const staleBefore = new Date(Date.now() - STALE_QUEUEING_TIME);
     const staleJobs = await Jobs.find({
       queueStatus : "queueing",
