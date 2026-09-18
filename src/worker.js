@@ -4,6 +4,17 @@ const { Worker } = require("bullmq");
 const connectDB = require("./config/db");
 const mongoose = require("mongoose");
 
+const pendingDbOperations = new Set();
+
+const trackDbOperation = (promise) => {
+   pendingDbOperations.add(promise);
+
+   promise.then(
+    () => pendingDbOperations.delete(promise),
+    () => pendingDbOperations.delete(promise)
+   );
+   return promise;
+}
 
 const delay = (ms) => {
       return new Promise((resolve) => {
@@ -77,25 +88,24 @@ worker.on("active", async (job) => {
   console.error("Failed to update attempt:",error.message);
 }
 });
-worker.on("completed", async(job) => {
+worker.on("completed", (job) => {
   if (!job.data.mongoJobId) {
     console.log(
       `${new Date().toLocaleTimeString()} Scheduled job ${job.id} completed Successfully`
     );
     return;
   }
-  try{
-    await Jobs.findByIdAndUpdate(
+     const operation = Jobs.findByIdAndUpdate(
       job.data.mongoJobId,
       {
         status : "completed",
         completedAt : new Date(),
       }
-    );
+    ).catch((error) => {
+        console.error("Error updating completed status:",error.message);
+    });
+    trackDbOperation(operation);
   console.log(`Job ${job.id} completed successfully`);
-  }catch(error){
-     console.error("Error in Updating Status", error.message);
-  }
 });
 worker.on("failed", async (job,error) => {
    if(!job){
@@ -152,9 +162,16 @@ const gracefulShutdown = async(signal) => {
   console.log(`${signal} received . Worker Shutdown Gracefully`);
   try{
     if(worker){
+      console.log("Closing worker")
       await worker.close();
+      console.log("Worker Closed");
     }
-
+    
+    console.log("Waiting for pending database updates...");
+    await Promise.allSettled([
+      ...pendingDbOperations
+    ]);
+    console.log("Database Updation is finished");
     await mongoose.connection.close();
     console.log("Worker Shutdown Successfully");
     process.exit(0);

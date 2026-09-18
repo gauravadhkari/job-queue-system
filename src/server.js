@@ -119,15 +119,6 @@ app.post("/jobs", async (req,res) => {
    {
     returnDocument : "after",
    });
-   console.log("BullMQ priority:", queueJob.opts.priority);
-  console.log("Queue JOb : ",queueJob.id);
-  console.log(
-  new Date().toLocaleTimeString(),
-  "Queued job:",
-  queueJob.id,
-  "delay:",
-  queueJob.opts.delay
-);
    return res.status(201).json({
   success: true,
   message: "Job Created",
