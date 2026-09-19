@@ -40,21 +40,21 @@ It also handles retries, failures, delayed jobs, priorities, idempotency, Redis 
 
 Redis unavailable
        |
-       v
+       
 queue_failed
        |
-       v
+       
 Recovery Runner
        |
-       v
+       
 queueing
        |
-       v
+       
 BullMQ enqueue
    /         \
 success     failure
    |           |
-   v           v
+           
 queued     queue_failed
 
 
@@ -63,47 +63,47 @@ queued     queue_failed
 MongoDB says:
 queueStatus = queueing
         |
-        v
+        
 Check BullMQ using deterministic jobId
         |
      +--+--+
      |     |
   exists  missing
      |     |
-     v     v
+         
  repair   queue_failed
  Mongo        |
-              v
+              
           retry later
 
 # Features
 
->Background job processing with BullMQ
->Redis-backed job queue
->MongoDB job-state persistence
->Separate API and worker processes
->Automatic retries
->Exponential backoff
->Job priority
->Worker concurrency
->Delayed jobs
->Scheduled/recurring job support
->Job idempotency
->Duplicate-request protection
->Queue failure tracking
->Automatic recovery after Redis outages
->Batch failed-job recovery
->Atomic recovery claiming
->Stale queueing job detection
->MongoDB/BullMQ state reconciliation
->Deterministic BullMQ job IDs
->Job monitoring APIs
->Failed-job inspection
->API, MongoDB and Redis health checks
->Graceful API shutdown
->Graceful worker shutdown
->Pending database-operation tracking
->Centralized environment configuration
+>Background job processing with BullMQ.
+>Redis-backed job queue.
+>MongoDB job-state persistence.
+>Separate API and worker processes.
+>Automatic retries.
+>Exponential backoff.
+>Job priority.
+>Worker concurrency.
+>Delayed jobs.
+>Scheduled/recurring job support.
+>Job idempotency.
+>Duplicate-request protection.
+>Queue failure tracking.
+>Automatic recovery after Redis outages.
+>Batch failed-job recovery.
+>Atomic recovery claiming.
+>Stale queueing job detection.
+>MongoDB/BullMQ state reconciliation.
+>Deterministic BullMQ job IDs.
+>Job monitoring APIs.
+>Failed-job inspection.
+>API, MongoDB and Redis health checks.
+>Graceful API shutdown.
+>Graceful worker shutdown.
+>Pending database-operation tracking.
+>Centralized environment configuration.
 
 # Tech Stack
 
@@ -121,13 +121,13 @@ Containerization: Docker for Redis
 
 pending
    |
-   v
+   
 queued
    |
-   v
+   
 processing
    |
-   v
+   
 completed
 
 # If Process Fails :
@@ -135,33 +135,33 @@ completed
 
 processing
     |
-    v
+    
 retrying
     |
-    v
+    
 processing
     |
-    +------> completed
+    +------ completed
 
 or after max attempts:
 
 processing
     |
-    v
+    
 failed Permanently
 
 # Queue admission is tracked Separately
 
 not_queued
     |
-    v
+    
 queueing
    /   \
-  v     v
+       
 queued  queue_failed
 
 
 This separates:
 
->whether the job successfully entered BullMQ
->whether the worker successfully processed the job
+>whether the job successfully entered BullMQ.
+>whether the worker successfully processed the job.
